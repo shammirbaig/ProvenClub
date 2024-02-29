@@ -85,34 +85,35 @@ const overdueController=async(req,res)=>{
         //if its greater than 7 days add 50rs fine for each day
     
         const transactions=await Transaction.find({MemberID:memberid});
-        let bookdetails=[];
-        for(const trans of transactions){
-            let bookid= trans.BookID;
-            for(const booktrans of transactions){
-                let bookdetail=[];
-                if(booktrans.BookID==bookid){
-                    bookdetail.push(booktrans);
+        let overdueBooks = [];
+        let totalFine = 0;
+
+        for (const checkout of transactions.filter(t => t.EventType === 'Checkout')) {
+            const returnTransaction = transactions.find(t =>
+                t.BookID === checkout.BookID && t.EventType === 'Return'
+            );
+
+            if (returnTransaction) {
+                const dueDate = new Date(checkout.Date);
+                dueDate.setDate(dueDate.getDate() + 7);
+
+                if (currentDate > dueDate && returnTransaction.Date > dueDate) {
+                    const daysOverdue = Math.ceil((returnTransaction.Date - dueDate) / (24 * 60 * 60 * 1000));
+                    const fine = Math.max(0, (daysOverdue - 7) * 50);
+
+                    overdueBooks.push({
+                        BookID: checkout.BookID,
+                        DueDays: daysOverdue,
+                        Fine: fine
+                    });
+
+                    totalFine += fine;
                 }
             }
-          let returnbookdate=  bookdetail.filter((book)=>book.EventType==="Return").reduce((a, b) => (a.MeasureDate > b.MeasureDate ? a : b));
-          let checkoutbookdate=  bookdetail.filter((book)=>book.EventType==="Checkout").reduce((a, b) => (a.MeasureDate > b.MeasureDate ? a : b));
-    
-          let duetime =returnbookdate.getTime()-checkoutbookdate.getTime();
-          let diff=Math.ceil(duetime/(24*60*60*1000));
-    
-          bookdetails.push({
-            BookID:bookid,
-            DueDays:diff
-          });
         }
-    
-        let pay=0;
-        for(const days of bookdetails){
-            if(bookdetails.DueDays>7){
-                pay+=pay*50;
-            }
-        }
-        return res.status(200).json({details:bookdetails,TotalOverdue:pay});
+        return res.status(200).json({ MemberID: memberid,
+            OverdueBooks: overdueBooks,
+            TotalFine: totalFine});
     }catch(err){
         return res.status(500).json({message:"Some error"})
     }
